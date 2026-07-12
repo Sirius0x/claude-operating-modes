@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/social-preview.png" alt="Claude Operating Modes — nine character-driven cognitive modes for any AI agent" width="860">
+</p>
+
 # Claude Operating Modes
 
 [![Stars](https://img.shields.io/github/stars/Sirius0x/claude-operating-modes?style=social)](https://github.com/Sirius0x/claude-operating-modes/stargazers)
