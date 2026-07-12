@@ -1,9 +1,16 @@
 # Claude Operating Modes
 
-Character-driven **cognitive modes** for any AI assistant (or human) — domain-general mindsets
-for code, writing, research, strategy, and decisions. Nine figures, each distilled to **one
-distinct mental move** with a trigger and the failure it prevents. Not cosplay: every mode earns
-its place by naming what it *kills*.
+[![Stars](https://img.shields.io/github/stars/Sirius0x/claude-operating-modes?style=social)](https://github.com/Sirius0x/claude-operating-modes/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Shell](https://img.shields.io/badge/shell-PowerShell%20%C2%B7%20Bash-5391FE)
+![Works with](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20any-8A2BE2)
+![Modes](https://img.shields.io/badge/modes-9-orange)
+
+**One line switches your AI's whole posture.** `op:batman` → recon before acting · `op:joker` →
+red-team its own plan · `op:fightclub` → drop the hedging and commit. Nine character-driven
+**cognitive modes** — portable across Claude Code, Codex, or any agent — each distilled to one
+mental move, a trigger, and the failure it *kills*. Domain-general: code, writing, research,
+strategy, decisions. **Not cosplay.**
 
 > Ego is fuel; modes are the steering.
 
