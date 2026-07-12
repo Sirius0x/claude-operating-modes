@@ -1,0 +1,10 @@
+# local terminal backups produced by alter-ego.ps1
+settings.alterego-backup.json
+*.dryrun.json
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+*.swp
+.vscode/
+.idea/
