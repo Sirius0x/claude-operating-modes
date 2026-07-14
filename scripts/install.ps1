@@ -24,6 +24,7 @@ param(
   [switch]$Claude,
   [switch]$Codex,
   [switch]$All,
+  [switch]$ShadowWalk,
   [switch]$DryRun
 )
 
@@ -37,7 +38,7 @@ function Write-Step($msg, $color = 'Gray') { Write-Host $msg -ForegroundColor $c
 
 # Copy the payload into a bundle dir; substitute {{BUNDLE_DIR}} in the deployed AGENTS.md.
 function Deploy-Bundle($bundleDir) {
-  if ($DryRun) { Write-Step "  would copy SKILL.md, CRAFT.md, AGENTS.md, mode-theme.ps1 -> $bundleDir (pruning legacy alter-ego.ps1/install.ps1)" 'DarkGray'; return }
+  if ($DryRun) { Write-Step "  would copy SKILL.md, CRAFT.md, AGENTS.md, mode-theme.ps1, shadow-walk.ps1, shadow-walk.sh -> $bundleDir (pruning legacy alter-ego.ps1/install.ps1)" 'DarkGray'; return }
   New-Item -ItemType Directory -Force -Path $bundleDir | Out-Null
   # prune files left by older installs that are no longer part of the payload
   foreach ($stale in 'alter-ego.ps1', 'install.ps1') {
@@ -47,6 +48,8 @@ function Deploy-Bundle($bundleDir) {
   Copy-Item (Join-Path $skill 'SKILL.md') (Join-Path $bundleDir 'SKILL.md') -Force
   Copy-Item (Join-Path $skill 'CRAFT.md') (Join-Path $bundleDir 'CRAFT.md') -Force
   Copy-Item (Join-Path $root 'scripts\mode-theme.ps1') (Join-Path $bundleDir 'mode-theme.ps1') -Force
+  Copy-Item (Join-Path $root 'scripts\shadow-walk.ps1') (Join-Path $bundleDir 'shadow-walk.ps1') -Force
+  Copy-Item (Join-Path $root 'scripts\shadow-walk.sh')  (Join-Path $bundleDir 'shadow-walk.sh')  -Force
   $agents = (Get-Content (Join-Path $skill 'AGENTS.md') -Raw).Replace('{{BUNDLE_DIR}}', $bundleDir)
   Set-Content (Join-Path $bundleDir 'AGENTS.md') $agents -Encoding UTF8
   Write-Step "  bundle -> $bundleDir" 'Green'
@@ -95,6 +98,47 @@ function Install-ClaudeCode {
     Copy-Item (Join-Path $root 'agents\claude-code\commands\mode.md') $cmd -Force
     Write-Step "  /mode command -> $cmd" 'Green'
   }
+
+  # Per-mode subagents: one manifest per mode -> ~/.claude/agents/op-<mode>.md
+  $agentsSrc = Join-Path $root 'agents\claude-code\agents'
+  $agentsDst = Join-Path $agentHome 'agents'
+  if ($DryRun) { Write-Step "  would install 8 mode subagents (op-*.md) -> $agentsDst" 'DarkGray' }
+  else {
+    New-Item -ItemType Directory -Force -Path $agentsDst | Out-Null
+    Copy-Item (Join-Path $agentsSrc 'op-*.md') $agentsDst -Force
+    Write-Step "  mode subagents -> $agentsDst" 'Green'
+  }
+
+  if ($ShadowWalk) { Enable-ShadowWalk (Join-Path $agentHome 'settings.json') $bundle }
+  else { Write-Step "  (Shadow-Walk memory available — re-run with -ShadowWalk to activate its hooks)" 'DarkGray' }
+}
+
+# Merge the Shadow-Walk hooks into settings.json without disturbing existing hooks/settings.
+# Idempotent: replaces only OUR record/recall entries (matched by the shadow-walk.ps1 command).
+function Enable-ShadowWalk($settingsFile, $bundleDir) {
+  # Parse the template with {{BUNDLE_DIR}} intact (valid JSON), THEN substitute the path into the
+  # parsed command strings — never into JSON source, so Windows backslashes can't break escaping.
+  $ours = (Get-Content (Join-Path $root 'scripts\shadow-walk.settings.json') -Raw | ConvertFrom-Json).hooks
+  foreach ($event in $ours.PSObject.Properties.Name) {
+    foreach ($entry in $ours.$event) {
+      foreach ($h in $entry.hooks) { $h.command = $h.command.Replace('{{BUNDLE_DIR}}', $bundleDir) }
+    }
+  }
+  if ($DryRun) { Write-Step "  would merge Shadow-Walk hooks (PostToolUse/UserPromptSubmit/SubagentStop record, SessionStart recall) -> $settingsFile" 'DarkGray'; return }
+
+  $settings = if (Test-Path $settingsFile) { Get-Content $settingsFile -Raw | ConvertFrom-Json -AsHashtable } else { @{} }
+  if (-not $settings.hooks) { $settings.hooks = @{} }
+  $tag = 'shadow-walk.ps1'
+  foreach ($event in $ours.PSObject.Properties.Name) {
+    if (-not $settings.hooks[$event]) { $settings.hooks[$event] = @() }
+    # drop any prior Shadow-Walk entry for this event, then add the current one
+    $settings.hooks[$event] = @($settings.hooks[$event] | Where-Object {
+      -not ($_.hooks | Where-Object { $_.command -like "*$tag*" })
+    }) + @($ours.$event)
+  }
+  if (-not (Test-Path "$settingsFile.opmode-backup")) { if (Test-Path $settingsFile) { Copy-Item $settingsFile "$settingsFile.opmode-backup" -Force } }
+  ($settings | ConvertTo-Json -Depth 32) | Set-Content $settingsFile -Encoding UTF8
+  Write-Step "  Shadow-Walk hooks -> $settingsFile (records every step at zero model-token cost; recalls at session start)" 'Green'
 }
 
 function Install-Codex {

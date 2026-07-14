@@ -1,0 +1,55 @@
+{
+  "//": "Shadow-Walk hooks. Merge the `hooks` entries below into ~/.claude/settings.json (the installer's -ShadowWalk switch does this for you). {{BUNDLE_DIR}} is resolved to the deployed bundle path. record hooks use suppressOutput:true so they cost ZERO model tokens; recall runs at SessionStart and injects a bounded brief. On macOS/Linux replace the pwsh command with: bash \"{{BUNDLE_DIR}}/shadow-walk.sh\" record|recall",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"{{BUNDLE_DIR}}\\shadow-walk.ps1\" record",
+            "suppressOutput": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"{{BUNDLE_DIR}}\\shadow-walk.ps1\" record",
+            "suppressOutput": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"{{BUNDLE_DIR}}\\shadow-walk.ps1\" record",
+            "suppressOutput": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"{{BUNDLE_DIR}}\\shadow-walk.ps1\" recall",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

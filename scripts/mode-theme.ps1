@@ -1,7 +1,7 @@
 <#
   Mode themes — flip the LIVE Windows Terminal color scheme to match the active operating mode,
   and revert cleanly. Windows Terminal hot-reloads settings.json, so the open window repaints on
-  save. One file covers all nine modes.
+  save. One file covers all eight modes.
 
   Each mode has a distinct scheme applied to EVERY profile (and defaults), because per-profile
   overrides beat a defaults-only change. A one-time backup preserves your TRUE original settings.
@@ -21,7 +21,7 @@
     mode-theme.ps1 list                # list modes and their palettes
     mode-theme.ps1 joker -SettingsPath C:\tmp\settings.json   # target a file (testing)
 
-  Aliases: john-wick=wick, jack-sparrow=sparrow, thomas-shelby=shelby, dr-strange=strange,
+  Aliases: john-wick=wick, jack-sparrow=sparrow, thomas-shelby=shelby,
            alter-ego/alterego/tyler=fight-club.
 #>
 param(
@@ -44,7 +44,6 @@ $aliases = @{
   'sparrow' = 'sparrow'; 'jack-sparrow' = 'sparrow'; 'jacksparrow' = 'sparrow'
   'joker' = 'joker'
   'shelby' = 'shelby'; 'thomas-shelby' = 'shelby'; 'thomasshelby' = 'shelby'
-  'strange' = 'strange'; 'dr-strange' = 'strange'; 'drstrange' = 'strange'
   'fight-club' = 'fightclub'; 'fightclub' = 'fightclub'; 'alter-ego' = 'fightclub'; 'alterego' = 'fightclub'; 'tyler' = 'fightclub'
 }
 
@@ -71,9 +70,6 @@ $schemes = [ordered]@{
   shelby = [ordered]@{ name = 'ThomasShelby'; background = '#0F0D0A'; foreground = '#CDBFA6'; cursorColor = '#D9A441'; selectionBackground = '#3A2E1C'
     black = '#1C1913'; red = '#9E5A3A'; green = '#6E7A5A'; yellow = '#D9A441'; blue = '#4A5A6A'; purple = '#7A5A5A'; cyan = '#6A7A72'; white = '#CDBFA6'
     brightBlack = '#3A342A'; brightRed = '#C27A56'; brightGreen = '#93A07A'; brightYellow = '#E6C066'; brightBlue = '#6E8296'; brightPurple = '#A07E7E'; brightCyan = '#93A69A'; brightWhite = '#E6DAC4' }
-  strange = [ordered]@{ name = 'DrStrange'; background = '#06121A'; foreground = '#CFE7EA'; cursorColor = '#E6B54A'; selectionBackground = '#0C3A44'
-    black = '#10242C'; red = '#C05A4A'; green = '#3FA98A'; yellow = '#E6B54A'; blue = '#2E8AA6'; purple = '#6A6AC0'; cyan = '#2BD9D9'; white = '#CFE7EA'
-    brightBlack = '#2E4A52'; brightRed = '#E07E6A'; brightGreen = '#6FD9B5'; brightYellow = '#F0CC66'; brightBlue = '#5AB5D9'; brightPurple = '#8A8AE0'; brightCyan = '#66F0F0'; brightWhite = '#E6F5F7' }
   fightclub = [ordered]@{ name = 'FightClub'; background = '#0A0A0A'; foreground = '#E6E6E6'; cursorColor = '#FF2A2A'; selectionBackground = '#7A0000'
     black = '#1A1A1A'; red = '#E01A1A'; green = '#8A8A8A'; yellow = '#C0392B'; blue = '#7A0000'; purple = '#A00000'; cyan = '#B03030'; white = '#D0D0D0'
     brightBlack = '#3A3A3A'; brightRed = '#FF2A2A'; brightGreen = '#A0A0A0'; brightYellow = '#E74C3C'; brightBlue = '#C0392B'; brightPurple = '#E01A1A'; brightCyan = '#FF4040'; brightWhite = '#FFFFFF' }

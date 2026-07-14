@@ -23,10 +23,11 @@ for a in "$@"; do case "$a" in
 
 deploy_bundle() { # $1 = bundle dir
   local d="$1"
-  if [ "$DRY" = 1 ]; then echo "  would copy SKILL.md, CRAFT.md, AGENTS.md, mode-theme.ps1 -> $d (pruning legacy alter-ego.ps1/install.ps1)"; return; fi
+  if [ "$DRY" = 1 ]; then echo "  would copy SKILL.md, CRAFT.md, AGENTS.md, mode-theme.ps1, shadow-walk.ps1, shadow-walk.sh -> $d (pruning legacy alter-ego.ps1/install.ps1)"; return; fi
   mkdir -p "$d"
   rm -f "$d/alter-ego.ps1" "$d/install.ps1"   # prune files from older installs
-  cp -f "$SKILL/SKILL.md" "$SKILL/CRAFT.md" "$ROOT/scripts/mode-theme.ps1" "$d/"
+  cp -f "$SKILL/SKILL.md" "$SKILL/CRAFT.md" "$ROOT/scripts/mode-theme.ps1" \
+        "$ROOT/scripts/shadow-walk.ps1" "$ROOT/scripts/shadow-walk.sh" "$d/"
   sed "s#{{BUNDLE_DIR}}#$d#g" "$SKILL/AGENTS.md" > "$d/AGENTS.md"
   echo "  bundle -> $d"
 }
@@ -75,6 +76,9 @@ install_claude() {
   inject "$home/CLAUDE.md" "$bundle"
   if [ "$DRY" = 1 ]; then echo "  would install /mode command -> $home/commands/mode.md";
   else mkdir -p "$home/commands"; cp -f "$ROOT/agents/claude-code/commands/mode.md" "$home/commands/mode.md"; echo "  /mode command -> $home/commands/mode.md"; fi
+  # Per-mode subagents: one manifest per mode -> ~/.claude/agents/op-<mode>.md
+  if [ "$DRY" = 1 ]; then echo "  would install 8 mode subagents (op-*.md) -> $home/agents";
+  else mkdir -p "$home/agents"; cp -f "$ROOT"/agents/claude-code/agents/op-*.md "$home/agents/"; echo "  mode subagents -> $home/agents"; fi
 }
 
 install_codex() {
