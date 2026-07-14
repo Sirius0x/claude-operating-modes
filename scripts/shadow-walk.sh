@@ -7,12 +7,15 @@
 #   recall   emit a compact recall brief (working/consolidated/long-term) as
 #            hookSpecificOutput.additionalContext. Wired to SessionStart -> a fresh context, incl.
 #            each isolated mode subagent, gets the shared history back. Cheap, not free.
+#   retrieve content-addressable recall: score journal steps by keyword overlap with the CURRENT
+#            prompt (BM25-lite, no extra LLM call) and inject the top-K RELEVANT ones. Wired to
+#            UserPromptSubmit. An unrelated prompt scores nothing and injects nothing.
 #   show     print the recall brief to the terminal (debug).
 #
 # Journal: ~/.claude/shadow-walk/journal.jsonl  (append-only, lossless; full detail always on disk)
 set -euo pipefail
 ACTION="${1:-}"; WORKING="${WORKING:-12}"; SESSIONS="${SESSIONS:-3}"
-TAIL_N="${TAIL:-400}"; MAX_LINES="${MAXLINES:-4000}"
+TAIL_N="${TAIL:-400}"; MAX_LINES="${MAXLINES:-4000}"; TOPK="${TOPK:-5}"
 DIR="$HOME/.claude/shadow-walk"; JOURNAL="$DIR/journal.jsonl"; ARCHIVE="$DIR/journal.archive.jsonl"; mkdir -p "$DIR"
 
 STDIN=""; if [ "$ACTION" != "show" ] && [ ! -t 0 ]; then STDIN="$(cat)"; fi
@@ -49,6 +52,54 @@ if [ "$ACTION" = "record" ]; then
      --arg event "$(field '.hook_event_name')" --arg tool "$tool" --arg sum "$sum" \
      --arg cwd "$(field '.cwd')" \
      '{ts:$ts,sid:$sid,agent:$agent,event:$event,tool:$tool,sum:$sum,cwd:$cwd}' >> "$JOURNAL"
+  exit 0
+fi
+
+# ---- retrieve (associative / content-addressable recall) ----
+if [ "$ACTION" = "retrieve" ]; then
+  [ -z "$STDIN" ] && exit 0
+  [ -f "$JOURNAL" ] || exit 0
+  query="$(field '.prompt')"
+  [ -z "$query" ] && exit 0
+  stop=" the and for you your with this that from have are was not can will how use using used all any out get got let its has had but yes one two now off via per into than then what when where which who why also been make made run running file files "
+  qflat="$(printf '%s' "$query" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z0-9_]{3,}' \
+           | awk -v s="$stop" '{ if (index(s, " " $0 " ")==0) print }' | sort -u | tr '\n' ' ')"
+  [ -z "$(printf '%s' "$qflat" | tr -d ' ')" ] && exit 0
+  # Documents: ts \t tool \t sum \t cwd from the journal tail. Score BM25-lite (query terms only)
+  # in awk, rank by sort, dedupe by tool|sum, take top-K. Skips the just-submitted prompt itself.
+  best="$(tail -n "$TAIL_N" "$JOURNAL" \
+    | jq -r '[.ts, .tool, (.sum // "")] | @tsv' 2>/dev/null \
+    | awk -F'\t' -v Q="$qflat" -v query="$query" '
+        BEGIN{ nq=split(Q,qa," "); for(i=1;i<=nq;i++) qset[qa[i]]=1; k1=1.2 }
+        {
+          if($2=="Prompt"){ s=tolower($3); sub(/[. ]+$/,"",s); ql=tolower(query);
+                            if(length(s)>=8 && index(ql, substr(s,1,40))==1) next }
+          ts[NR]=$1; tool[NR]=$2; sum[NR]=$3;
+          text=tolower($2" "$3); gsub(/[^a-z0-9_]+/, " ", text);
+          c=split(text, toks, " "); delete seen;
+          for(i=1;i<=c;i++){ w=toks[i]; if(length(w)<3) continue;
+            if(w in qset){ tf[NR,w]++; hit[NR]=1; if(!seen[w]){df[w]++; seen[w]=1} } }
+        }
+        END{
+          N=0; for(d=1;d<=NR;d++) if(hit[d]) N++; if(N==0) exit;
+          for(d=1;d<=NR;d++){ if(!hit[d]) continue; score=0;
+            for(w in qset){ f=tf[d,w]; if(f<=0) continue;
+              idf=log(1+(N-df[w]+0.5)/(df[w]+0.5)); score+=idf*(f*(k1+1))/(f+k1) }
+            printf "%.6f\t%s\t%s\t%s\n", score, substr(ts[d],1,10), tool[d], sum[d] }
+        }' \
+    | sort -t"$(printf '\t')" -k1,1 -rn \
+    | awk -F'\t' '!seen[$3"|"$4]++' \
+    | head -n "$TOPK")"
+  [ -z "$best" ] && exit 0
+  body="## Shadow-Walk associative recall (past steps related to your prompt)
+Matched by keyword overlap against $JOURNAL — read it for full detail."
+  while IFS="$(printf '\t')" read -r sc day tl sm; do
+    [ -z "$day" ] && continue
+    body="$body
+- [$day] $tl: $sm"
+  done <<< "$best"
+  jq -nc --arg e "$(field '.hook_event_name')" --arg c "$body" \
+    '{hookSpecificOutput:{hookEventName:$e,additionalContext:$c}}'
   exit 0
 fi
 

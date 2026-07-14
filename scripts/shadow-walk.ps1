@@ -12,6 +12,13 @@
              in its OWN isolated window — gets the shared history back. Recall costs a small,
              bounded number of tokens; the FULL detail always stays on disk for on-demand reading.
 
+    retrieve Content-addressable recall: score journal steps by keyword overlap with the CURRENT
+             prompt (BM25-lite, no extra LLM call) and inject the top-K RELEVANT ones as
+             additionalContext. Wired to UserPromptSubmit. Where recall answers "what did I just
+             do", retrieve answers "what did I ever do that relates to what you're asking now" —
+             so an association from 300 steps ago resurfaces exactly when it matters. Gated: an
+             unrelated prompt scores nothing and injects nothing.
+
   Honest note: recording is genuinely free; recall is cheap, not free (anything the model reads is
   tokens). The journal is the single shared brain every mode reads/writes — the only channel that
   can cross isolated subagent contexts.
@@ -20,14 +27,16 @@
   Usage (normally invoked by hooks, not by hand):
     <hook stdin JSON> | pwsh -NoProfile -File shadow-walk.ps1 record
     <hook stdin JSON> | pwsh -NoProfile -File shadow-walk.ps1 recall
+    <hook stdin JSON> | pwsh -NoProfile -File shadow-walk.ps1 retrieve
     pwsh -NoProfile -File shadow-walk.ps1 show     # print the recall brief to your terminal (debug)
 #>
 param(
-  [Parameter(Mandatory, Position = 0)][ValidateSet('record', 'recall', 'show')][string]$Action,
+  [Parameter(Mandatory, Position = 0)][ValidateSet('record', 'recall', 'retrieve', 'show')][string]$Action,
   [int]$Working = 12,      # verbatim recent steps to surface (working memory)
   [int]$Sessions = 3,      # prior sessions to one-line summarize (long-term memory)
-  [int]$Tail = 400,        # recall reads only the last N journal lines (bounds recall cost O(1))
-  [int]$MaxLines = 4000    # rotate: keep last N lines in journal, archive the rest
+  [int]$Tail = 400,        # recall/retrieve read only the last N journal lines (bounds cost O(1))
+  [int]$MaxLines = 4000,   # rotate: keep last N lines in journal, archive the rest
+  [int]$TopK = 5           # retrieve: max relevant steps to inject per prompt
 )
 $ErrorActionPreference = 'Stop'
 
@@ -102,6 +111,84 @@ if ($Action -eq 'record') {
   }
   $line = ($entry | ConvertTo-Json -Compress -Depth 6)
   Add-Content -Path $journal -Value $line -Encoding UTF8
+  exit 0
+}
+
+# ---- retrieve (associative / content-addressable recall) ----
+# Tokenizer shared by query and documents: lowercase, alnum tokens >=3 chars, drop stopwords.
+$stop = @{}
+foreach ($w in 'the','and','for','you','your','with','this','that','from','have','are','was','not',
+                'can','will','how','use','using','used','all','any','out','get','got','let','its',
+                'has','had','but','yes','one','two','now','off','via','per','into','than','then',
+                'what','when','where','which','who','why','into','over','also','been','make','made',
+                'run','running','file','files') { $stop[$w] = $true }
+function Get-Tokens([string]$t) {
+  if (-not $t) { return @() }
+  $out = New-Object System.Collections.Generic.List[string]
+  foreach ($m in [regex]::Matches($t.ToLowerInvariant(), '[a-z0-9_]{3,}')) {
+    $w = $m.Value
+    if (-not $stop.ContainsKey($w)) { $out.Add($w) }
+  }
+  return $out.ToArray()
+}
+
+if ($Action -eq 'retrieve') {
+  if (-not $hook -or -not $hook.prompt) { exit 0 }
+  if (-not (Test-Path $journal)) { exit 0 }
+  $query  = [string]$hook.prompt
+  $qterms = @(Get-Tokens $query | Select-Object -Unique)
+  if ($qterms.Count -eq 0) { exit 0 }
+  $qset = @{}; foreach ($q in $qterms) { $qset[$q] = $true }
+
+  # Build documents from the journal tail (bounded cost). Skip the just-submitted prompt itself.
+  $docs = New-Object System.Collections.Generic.List[object]
+  foreach ($l in (Get-Content $journal -Tail $Tail -Encoding UTF8)) {
+    if (-not $l.Trim()) { continue }
+    try { $e = $l | ConvertFrom-Json } catch { continue }
+    if ($e.tool -eq 'Prompt' -and $e.sum -and $query.StartsWith([string]$e.sum.TrimEnd('.'))) { continue }
+    $toks = Get-Tokens ("{0} {1}" -f $e.tool, $e.sum)
+    if ($toks.Count -eq 0) { continue }
+    # only keep docs that share at least one query term (keeps scoring O(matches))
+    $tf = @{}; $hit = $false
+    foreach ($t in $toks) { if ($qset.ContainsKey($t)) { $tf[$t] = ($tf[$t] + 1); $hit = $true } }
+    if ($hit) { $docs.Add([pscustomobject]@{ entry = $e; tf = $tf }) }
+  }
+  if ($docs.Count -eq 0) { exit 0 }
+
+  # Document frequency per query term, then BM25-lite score (idf * saturated tf; no length norm).
+  $N = $docs.Count
+  $df = @{}
+  foreach ($d in $docs) { foreach ($t in $d.tf.Keys) { $df[$t] = ($df[$t] + 1) } }
+  $k1 = 1.2
+  $scored = foreach ($d in $docs) {
+    $score = 0.0
+    foreach ($t in $d.tf.Keys) {
+      $idf = [Math]::Log(1 + ($N - $df[$t] + 0.5) / ($df[$t] + 0.5))
+      $f   = $d.tf[$t]
+      $score += $idf * ($f * ($k1 + 1)) / ($f + $k1)
+    }
+    [pscustomobject]@{ entry = $d.entry; score = $score }
+  }
+  # Dedupe by summary (keep highest score), rank, take top-K.
+  $best = $scored | Sort-Object score -Descending |
+            Group-Object { "$($_.entry.tool)|$($_.entry.sum)" } |
+            ForEach-Object { $_.Group[0] } |
+            Sort-Object score -Descending | Select-Object -First $TopK
+  $best = @($best | Where-Object { $_.score -gt 0 })
+  if ($best.Count -eq 0) { exit 0 }
+
+  $sb = [System.Text.StringBuilder]::new()
+  [void]$sb.AppendLine('## Shadow-Walk associative recall (past steps related to your prompt)')
+  [void]$sb.AppendLine("Matched by keyword overlap against $journal — read it for full detail.")
+  foreach ($b in $best) {
+    $e = $b.entry
+    $t0 = $e.ts   # ConvertFrom-Json may hand back a [DateTime] or a string
+    $day = if ($t0 -is [datetime]) { $t0.ToString('yyyy-MM-dd') } else { ([string]$t0).Substring(0, [Math]::Min(10, ([string]$t0).Length)) }
+    [void]$sb.AppendLine(("- [{0}] {1}: {2}" -f $day, $e.tool, $e.sum))
+  }
+  $brief = $sb.ToString().TrimEnd()
+  $out = @{ hookSpecificOutput = @{ hookEventName = [string]$hook.hook_event_name; additionalContext = $brief } }
+  $out | ConvertTo-Json -Compress -Depth 6
   exit 0
 }
 

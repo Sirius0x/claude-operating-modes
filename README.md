@@ -153,6 +153,11 @@ them a shared brain on disk:
   is tokens; recall stays small, and the **full detail is always on disk** for a mode to read on
   demand. (Honest caveat: no memory a model *recalls* can be truly zero-token — storage is free,
   recall is bounded.)
+- **Associative recall.** A `UserPromptSubmit` hook scores past steps by keyword overlap with your
+  *current* prompt (BM25-lite — TF saturation × IDF, no extra LLM call) and injects only the top few
+  **relevant** ones. Where `SessionStart` recall answers "what did I just do", this answers "what did
+  I ever do that relates to what you're asking now" — so an association from hundreds of steps ago
+  resurfaces exactly when it matters. Gated: an unrelated prompt scores nothing and injects nothing.
 - **Shared across modes.** Every mode writes to and reads from the same journal — the one channel
   that crosses isolated subagent contexts.
 - **Resource-safe.** Obvious secrets (tokens, keys, `Authorization:` values) are redacted before
@@ -177,6 +182,8 @@ Activate it (opt-in, makes a backup, idempotent):
 - [x] **Per-mode Claude Code subagents** — one manifest per mode with scoped tools, model, effort,
       and colour (`agents/claude-code/agents/`, installed to `~/.claude/agents/`).
 - [x] **Shadow-Walk memory** — background zero-token step-journal + cross-mode recall via hooks.
+- [x] **Associative recall** — content-addressable retrieval (BM25-lite) injects the past steps
+      relevant to the current prompt, not just the recent ones; unrelated prompts inject nothing.
 - [ ] Native skill manifests for more agents (Cursor `.mdc`, Windsurf rules).
 - [ ] Optional extra mode slots (Dr Strange retired; two free).
 

@@ -1,5 +1,5 @@
 {
-  "//": "Shadow-Walk hooks. Merge the `hooks` entries below into ~/.claude/settings.json (the installer's -ShadowWalk switch does this for you). {{BUNDLE_DIR}} is resolved to the deployed bundle path. record hooks use suppressOutput:true so they cost ZERO model tokens; recall runs at SessionStart and injects a bounded brief. On macOS/Linux replace the pwsh command with: bash \"{{BUNDLE_DIR}}/shadow-walk.sh\" record|recall",
+  "//": "Shadow-Walk hooks. Merge the `hooks` entries below into ~/.claude/settings.json (the installer's -ShadowWalk switch does this for you). {{BUNDLE_DIR}} is resolved to the deployed bundle path. record hooks use suppressOutput:true so they cost ZERO model tokens; recall runs at SessionStart and injects a bounded brief; retrieve runs at UserPromptSubmit and injects only the past steps relevant to the current prompt (nothing when unrelated). On macOS/Linux replace the pwsh command with: bash \"{{BUNDLE_DIR}}/shadow-walk.sh\" record|recall|retrieve",
   "hooks": {
     "PostToolUse": [
       {
@@ -22,6 +22,11 @@
             "command": "pwsh -NoProfile -File \"{{BUNDLE_DIR}}\\shadow-walk.ps1\" record",
             "suppressOutput": true,
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"{{BUNDLE_DIR}}\\shadow-walk.ps1\" retrieve",
+            "timeout": 15
           }
         ]
       }
